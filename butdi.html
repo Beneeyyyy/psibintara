@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Latihan Kecermatan - Random</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #fff;
+      color: #000;
+      margin: 0;
+      padding: 10px;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      border: 2px solid #000;
+      padding: 15px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 20px;
+      margin-bottom: 5px;
+      color: #000;
+    }
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+      margin: 10px 0;
+    }
+    .tab {
+      padding: 8px 15px;
+      background: #fff;
+      border: 2px solid #000;
+      color: #000;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .tab.active {
+      background: #000;
+      color: #fff;
+    }
+    .info {
+      text-align: center;
+      font-size: 16px;
+      margin: 10px 0;
+      color: #000;
+    }
+    .timer {
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+      color: #000;
+      margin: 10px 0;
+    }
+    .master-set {
+      background: #fff;
+      padding: 15px;
+      margin: 10px 0;
+      color: #000;
+    }
+    .master-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: center;
+    }
+    .master-table td {
+      font-size: 40px;
+      font-weight: bold;
+      padding: 10px;
+      text-align: center;
+      border: 2px solid #000;
+      width: 80px;
+      height: 80px;
+    }
+    .soal {
+      background: #fff;
+      padding: 15px;
+      margin: 0px;
+      color: #000;
+    }
+    .soal-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: center;
+    }
+    .soal-table td {
+      font-size: 32px;
+      font-weight: bold;
+      padding: 15px;
+      text-align: center;
+      border: 2px solid #000;
+      letter-spacing: 30px;
+    }
+    .pilihan {
+      display: flex;
+      justify-content: center;
+      gap: 0px;
+      margin: 0px;
+    }
+    .pil {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #000;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #fff;
+      color: #000;
+      margin: 0;
+    }
+    .pil:hover {
+      background: #000;
+      color: #fff;
+    }
+    .feedback {
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+      min-height: 30px;
+      margin: 10px 0;
+      color: #000;
+    }
+    .benar { color: #000; }
+    .salah { color: #000; }
+    button {
+      padding: 10px 20px;
+      font-size: 14px;
+      margin: 5px;
+      background: #fff;
+      border: 2px solid #000;
+      color: #000;
+      cursor: pointer;
+    }
+    button:hover { 
+      background: #000; 
+      color: #fff;
+    }
+    .score {
+      text-align: center;
+      font-size: 18px;
+      margin-top: 15px;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>TEST KECERMATAN  (RANDOM)</h1>
+    
+    <div class="tabs">
+      <button class="tab active" onclick="pilihJenis(0)">HURUF HILANG</button>
+      <button class="tab" onclick="pilihJenis(1)">ANGKA HILANG</button>
+      <button class="tab" onclick="pilihJenis(2)">SIMBOL HILANG</button>
+    </div>
+
+    <div class="info">
+      Soal <span id="nomor">1</span> &nbsp;&nbsp;&nbsp; Benar: <span id="benar">0</span>
+    </div>
+    
+    <div class="timer" id="timer">60</div>
+
+    <div class="master-set" id="masterSet"></div>
+    
+    <div class="soal" id="soal"></div>
+    
+    <div class="pilihan" id="pilihan"></div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <div style="text-align:center;">
+      <button onclick="nextSoal()">SOAL BERIKUTNYA →</button>
+      <button onclick="resetTes()">RESET TES</button>
+    </div>
+
+    <div class="score" id="score"></div>
+  </div>
+
+  <script>
+    let jenis = 0; // 0=huruf, 1=angka, 2=simbol
+    let soalSekarang = 0;
+    let skor = 0;
+    let waktuTotal = 60; // 1 menit total
+    let timerInterval;
+    let jawabanBenarSekarang = "";
+    let hasilJawaban = []; // Simpan hasil untuk ditampilkan di akhir
+    let waktuPerSoal = 1.2; // rata-rata 1.2 detik per soal (standar POLRI)
+
+    // Pool lengkap untuk diacak tiap sesi
+    const poolHuruf = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+    const poolAngka = ['0','1','2','3','4','5','6','7','8','9'];
+    const poolSimbol = ["★","▲","■","●","◆","▼","△","▽","○","◇","☆","♥","♠","♦","♣","→","↑","←","↓","↔"];
+    const kolomJawaban = ['A', 'B', 'C', 'D', 'E'];
+
+    // Master set berubah tiap sesi
+    let masterHuruf, masterAngka, masterSimbol;
+
+    function acakMaster() {
+      const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
+      masterHuruf = shuffle(poolHuruf).slice(0, 5);
+      masterAngka = shuffle(poolAngka).slice(0, 5);
+      masterSimbol = shuffle(poolSimbol).slice(0, 5);
+    }
+
+    function pilihJenis(j) {
+      jenis = j;
+      document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === j));
+      resetTes();
+    }
+
+    function generateSoal() {
+      let masterSet = [];
+      let soalDitampilkan = [];
+      let hilang;
+      let indexHilang;
+
+      if (jenis === 0) masterSet = [...masterHuruf];
+      else if (jenis === 1) masterSet = [...masterAngka];
+      else masterSet = [...masterSimbol];
+
+      // masterSet urutan asli, yang diacak hanya soal
+      const soalAcak = [...masterSet].sort(() => Math.random() - 0.5);
+      
+      // Pilih item yang akan hilang dari soal acak
+      indexHilang = Math.floor(Math.random() * 5);
+      hilang = soalAcak[indexHilang];
+      
+      // Soal = 4 item dari soalAcak (1 dihilangkan), lalu diacak lagi posisinya
+      soalDitampilkan = soalAcak.filter((_, idx) => idx !== indexHilang).sort(() => Math.random() - 0.5);
+
+      // Jawaban = kolom berdasarkan posisi item hilang di masterSet ASLI
+      const indexDiMaster = masterSet.indexOf(hilang);
+      const jawabanHuruf = kolomJawaban[indexDiMaster];
+
+      return {
+        soal: soalDitampilkan.join(" "),
+        pilihan: [...kolomJawaban],
+        jawaban: jawabanHuruf,
+        hilang: hilang,
+        masterSet: masterSet, // urutan asli
+        indexHilang: indexDiMaster
+      };
+    }
+
+    function mulaiTimer() {
+      // Cek apakah timer sudah berjalan, kalau belum mulai
+      if (!timerInterval) {
+        timerInterval = setInterval(() => {
+          waktuTotal--;
+          document.getElementById('timer').textContent = waktuTotal;
+          if (waktuTotal <= 0) {
+            clearInterval(timerInterval);
+            tampilkanHasilAkhir();
+          }
+        }, 1000);
+      }
+    }
+
+    function tampilSoal() {
+      const data = generateSoal();
+      jawabanBenarSekarang = data.jawaban;
+
+      document.getElementById('nomor').textContent = soalSekarang + 1;
+      
+      // Tampilkan master set dengan tabel
+      let masterHTML = '<table class="master-table"><tr>';
+      data.masterSet.forEach((item, idx) => {
+        masterHTML += `<td>${item}</td>`;
+      });
+      masterHTML += '</tr><tr>';
+      kolomJawaban.forEach(kolom => {
+        masterHTML += `<td style="font-size: 40px; padding: 5px; color: ;">${kolom}</td>`;
+      });
+      masterHTML += '</tr></table>';
+      document.getElementById('masterSet').innerHTML = masterHTML;
+      
+      // Tampilkan soal + pilihan dalam 1 kotak besar terpadu
+      document.getElementById('soal').innerHTML = `
+        <div style="border: 2px solid #000; padding: 0; width: 100%; box-sizing: border-box;">
+          <div style="font-size: 40px; font-weight: bold; padding: 15px; text-align: center; border-bottom: 2px solid #000; letter-spacing: 30px;">
+            ${data.soal}
+          </div>
+          <div style="display: flex; justify-content: center; padding: 0;">
+            ${data.pilihan.map((pil, idx) => `
+              <div style="width: calc(20% - 1px); height: 60px; display: flex; align-items: center; justify-content: center; border-right: ${idx < 4 ? '2px solid #000' : 'none'}; font-size: 40px; font-weight: bold; cursor: pointer; background: #fff; color: #000; box-sizing: border-box;" onclick="jawab('${pil}', '${data.jawaban}')">${pil}</div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      
+      document.getElementById('feedback').innerHTML = '';
+      sudahJawab = false;
+
+      const pilihanDiv = document.getElementById('pilihan');
+      pilihanDiv.innerHTML = '';
+
+      mulaiTimer();
+    }
+
+    let sudahJawab = false;
+
+    function jawab(pilihanUser, jawabanBenar) {
+      if (sudahJawab) return;
+      sudahJawab = true;
+
+      hasilJawaban.push({
+        soal: document.getElementById('soal').textContent,
+        user: pilihanUser,
+        benar: jawabanBenar,
+        hasil: pilihanUser === jawabanBenar
+      });
+      
+      if (pilihanUser === jawabanBenar) {
+        skor++;
+        document.getElementById('benar').textContent = skor;
+      }
+      
+      nextSoal();
+    }
+
+    function nextSoal() {
+      soalSekarang++;
+      if (waktuTotal <= 0) { // waktu habis, langsung tampilkan hasil
+        clearInterval(timerInterval);
+        tampilkanHasilAkhir();
+      } else if (soalSekarang >= 50) {   // target 50 soal (standar POLRI)
+        clearInterval(timerInterval);
+        tampilkanHasilAkhir();
+      } else {
+        tampilSoal();
+      }
+    }
+
+    function tampilkanHasilAkhir() {
+      const container = document.querySelector('.container');
+      const totalSoal = 50; // target total soal
+      const tidakDikerjakan = totalSoal - hasilJawaban.length;
+      const nilai = skor; // nilai = jumlah benar dari 50 soal
+      const persentase = (skor/totalSoal*100).toFixed(1);
+      
+      let hasilHTML = `
+        <h1>TEST KECERMATAN (RANDOM) - HASIL AKHIR</h1>
+        <div class="score">
+          <h2>Nilai: ${nilai} / ${totalSoal} (${persentase}%)</h2>
+          <h4>Benar: ${skor} | Salah: ${hasilJawaban.length - skor} | Tidak dikerjakan: ${tidakDikerjakan}</h4>
+          <h4>Dikerjakan: ${hasilJawaban.length} dari ${totalSoal} soal</h4>
+        </div>
+        <div style="margin: 20px 0; text-align: center;">
+          <button onclick="resetTes()">ULANGI TES</button>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto; border: 2px solid #000; padding: 15px;">
+          <h3 style="text-align: center; margin-bottom: 15px;">RINCIAN JAWABAN:</h3>
+      `;
+      
+      hasilJawaban.forEach((h, idx) => {
+        const status = h.hasil ? '✓ BENAR' : '✗ SALAH';
+        const warna = h.hasil ? 'benar' : 'salah';
+        hasilHTML += `
+          <div style="margin: 8px 0; padding: 8px; border-bottom: 1px solid #ccc;">
+            <strong>Soal ${idx + 1}:</strong> ${h.soal}<br>
+            <strong>Jawaban Anda:</strong> ${h.user} | <strong>Jawaban Benar:</strong> ${h.benar}<br>
+            <span class="${warna}"><strong>${status}</strong></span>
+          </div>
+        `;
+      });
+      
+      if (tidakDikerjakan > 0) {
+        hasilHTML += `
+          <div style="margin: 10px 0; padding: 10px; background: #ffcccc; border: 2px solid #ff0000;">
+            <strong style="color: #8B0000;">⚠ TIDAK DIKERJAKAN: ${tidakDikerjakan} soal (nilai 0)</strong>
+          </div>
+        `;
+      }
+      
+      hasilHTML += '</div>';
+      container.innerHTML = hasilHTML;
+    }
+
+    function resetTes() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      soalSekarang = 0;
+      skor = 0;
+      waktuTotal = 60;
+      hasilJawaban = [];
+      acakMaster(); // master baru tiap sesi
+      sudahJawab = false;
+      document.getElementById('benar').textContent = '0';
+      document.getElementById('timer').textContent = '60';
+      document.getElementById('feedback').innerHTML = '';
+      
+      const container = document.querySelector('.container');
+      if (!document.getElementById('soal')) {
+        location.reload();
+      } else {
+        tampilSoal();
+      }
+    }
+
+    window.onload = () => {
+      acakMaster();
+      tampilSoal();
+    };
+  </script>
+</body>
+</html>
