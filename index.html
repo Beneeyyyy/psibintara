@@ -300,10 +300,11 @@
     </div>
 
     <div class="info">
-      Soal <span id="nomor">1</span> &nbsp;&nbsp;&nbsp; Benar: <span id="benar">0</span>
+      Sesi <span id="sesi">1</span> / 10 &nbsp;&nbsp;&nbsp; Soal <span id="nomor">1</span> &nbsp;&nbsp;&nbsp; Benar: <span id="benar">0</span> &nbsp;&nbsp;&nbsp; Total Skor: <span id="totalSkor">0</span>
     </div>
     
     <div class="timer" id="timer">60</div>
+    <div class="info" id="kategoriInfo" style="font-size: 16px; margin: 5px 0;"></div>
 
     <div class="master-set" id="masterSet"></div>
     
@@ -316,6 +317,13 @@
     <div style="text-align:center;">
       <button onclick="nextSoal()">SOAL BERIKUTNYA →</button>
       <button onclick="resetTes()">RESET TES</button>
+    </div>
+
+    <!-- Countdown Screen -->
+    <div id="countdownScreen" style="display: none; text-align: center; max-width: 800px; margin: auto; background: #fff; border: 2px solid #000; padding: 15px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+      <h1>SESI BERIKUTNYA</h1>
+      <div id="countdownTimer" style="font-size: 48px; margin: 50px 0; font-weight: bold;">3</div>
+      <div id="nextKategori" style="font-size: 20px; margin: 20px 0;"></div>
     </div>
 
     <div class="score" id="score"></div>
@@ -346,17 +354,22 @@
 
   <script>
     let jenis = 0; // 0=huruf, 1=angka, 2=simbol
+    let sesiSekarang = 1;
+    let totalSesi = 10;
     let soalSekarang = 0;
     let skor = 0;
-    let waktuTotal = 60; // 1 menit total
+    let skorTotal = 0;
+    let semuaHasil = []; // Simpan hasil semua sesi
+    let waktuTotal = 60; // 1 menit per sesi
     let timerInterval;
     let jawabanBenarSekarang = "";
     let hasilJawaban = []; // Simpan hasil untuk ditampilkan di akhir
     let waktuPerSoal = 1.2; // rata-rata 1.2 detik per soal (standar POLRI)
     let recentAnswers = []; // Track recent answers to avoid repetition
+    let sedangCountdown = false;
 
     // Pool lengkap untuk diacak tiap sesi
-    const poolHuruf = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+    const poolHuruf = ['B','C','D','F','G','H','J','K','L','M','N','P','Q','R','S','T','V','W','X','Y','Z'];
     const poolAngka = ['0','1','2','3','4','5','6','7','8','9'];
     const poolSimbol = ["★","▲","■","●","◆","▼","△","▽","○","◇","☆","♥","♠","♦","♣","→","↑","←","↓","↔"];
     const kolomJawaban = ['A', 'B', 'C', 'D', 'E'];
@@ -435,6 +448,38 @@
       tesDimulai = true;
       document.getElementById('startScreen').style.display = 'none';
       document.querySelector('.container').style.display = 'block';
+      // Reset untuk sesi pertama
+      sesiSekarang = 1;
+      skorTotal = 0;
+      semuaHasil = [];
+      // Gunakan kategori yang dipilih user, jangan random
+      // jenis sudah diset oleh pilihJenisStart()
+      resetSesi();
+    }
+
+    function resetSesi() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      soalSekarang = 0;
+      skor = 0;
+      waktuTotal = 60;
+      hasilJawaban = [];
+      recentAnswers = [];
+      sudahJawab = false;
+      
+      // Acak master set untuk sesi ini (master berubah tiap sesi)
+      acakMaster();
+      
+      // Update UI
+      document.getElementById('sesi').textContent = sesiSekarang;
+      document.getElementById('benar').textContent = '0';
+      document.getElementById('timer').textContent = '60';
+      document.getElementById('feedback').innerHTML = '';
+      
+      // Update kategori info
+      const namaKategori = ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'];
+      document.getElementById('kategoriInfo').textContent = `Kategori: ${namaKategori[jenis]}`;
+      
       tampilSoal();
     }
 
@@ -446,7 +491,7 @@
           document.getElementById('timer').textContent = waktuTotal;
           if (waktuTotal <= 0) {
             clearInterval(timerInterval);
-            tampilkanHasilAkhir();
+            selesaiSesi();
           }
         }, 1000);
       }
@@ -502,7 +547,7 @@
     }
 
     function jawab(pilihanUser, jawabanBenar) {
-      if (sudahJawab) return;
+      if (sudahJawab || sedangCountdown) return;
       sudahJawab = true;
 
       hasilJawaban.push({
@@ -522,57 +567,181 @@
 
     function nextSoal() {
       soalSekarang++;
-      if (waktuTotal <= 0) { // waktu habis, langsung tampilkan hasil
+      if (waktuTotal <= 0) { // waktu habis, selesai sesi
         clearInterval(timerInterval);
-        tampilkanHasilAkhir();
-      } else if (soalSekarang >= 50) {   // target 50 soal (standar POLRI)
+        selesaiSesi();
+      } else if (soalSekarang >= 50) {   // 50 soal per sesi
         clearInterval(timerInterval);
-        tampilkanHasilAkhir();
+        selesaiSesi();
       } else {
         tampilSoal();
       }
     }
 
+    function selesaiSesi() {
+      // Simpan hasil sesi ini
+      semuaHasil.push({
+        sesi: sesiSekarang,
+        kategori: ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'][jenis],
+        skor: skor,
+        totalSoal: hasilJawaban.length,
+        persentase: (hasilJawaban.length > 0 ? (skor/hasilJawaban.length*100).toFixed(1) : 0)
+      });
+      
+      skorTotal += skor;
+      document.getElementById('totalSkor').textContent = skorTotal;
+      
+      if (sesiSekarang >= totalSesi) {
+        // Semua sesi selesai
+        tampilkanHasilAkhir();
+      } else {
+        // Langsung ke sesi berikutnya tanpa countdown
+        sesiSekarang++;
+        resetSesi();
+      }
+    }
+
+    function tampilkanCountdown() {
+      console.log('tampilkanCountdown() dipanggil');
+      
+      // Hentikan semua countdown yang mungkin masih berjalan
+      if (window.currentCountdownInterval) {
+        clearInterval(window.currentCountdownInterval);
+      }
+      
+      sedangCountdown = true;
+      let countdown = 3;
+      
+      // Tampilkan countdown di atas main container
+      console.log('Menampilkan countdown overlay');
+      document.getElementById('countdownScreen').style.display = 'block';
+      document.getElementById('countdownTimer').textContent = countdown; // Set initial value
+      
+      // Tampilkan kategori yang sama untuk sesi berikutnya
+      const namaKategori = ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'];
+      document.getElementById('nextKategori').textContent = `Sesi berikutnya: ${namaKategori[jenis]}`;
+      
+      console.log('Memulai countdown dari 3');
+      window.currentCountdownInterval = setInterval(() => {
+        countdown--;
+        console.log('Countdown:', countdown);
+        document.getElementById('countdownTimer').textContent = countdown;
+        
+        if (countdown <= 0) {
+          clearInterval(window.currentCountdownInterval);
+          window.currentCountdownInterval = null;
+          sedangCountdown = false;
+          console.log('Countdown selesai, melanjutkan ke sesi berikutnya');
+          
+          // Sembunyikan countdown
+          document.getElementById('countdownScreen').style.display = 'none';
+          
+          resetSesi();
+        }
+      }, 1000);
+    }
+
     function tampilkanHasilAkhir() {
       const container = document.querySelector('.container');
-      const totalSoal = 50; // target total soal
-      const tidakDikerjakan = totalSoal - hasilJawaban.length;
-      const nilai = skor; // nilai = jumlah benar dari 50 soal
-      const persentase = (skor/totalSoal*100).toFixed(1);
+      const totalSoalSemuaSesi = totalSesi * 50; // 10 sesi × 50 soal
+      const persentase = (skorTotal/totalSoalSemuaSesi*100).toFixed(1);
       
       let hasilHTML = `
         <h1>TEST KECERMATAN BINTARA - HASIL AKHIR</h1>
         <div class="score">
-          <h2>Nilai: ${nilai} / ${totalSoal} (${persentase}%)</h2>
-          <h4>Benar: ${skor} | Salah: ${hasilJawaban.length - skor} | Tidak dikerjakan: ${tidakDikerjakan}</h4>
-          <h4>Dikerjakan: ${hasilJawaban.length} dari ${totalSoal} soal</h4>
+          <h2>Total Skor: ${skorTotal} / ${totalSoalSemuaSesi} (${persentase}%)</h2>
+          <h4>Selesai: ${semuaHasil.length} dari ${totalSesi} sesi</h4>
         </div>
         <div style="margin: 20px 0; text-align: center;">
           <button onclick="location.reload()">ULANGI TES</button>
         </div>
-        <div style="max-height: 400px; overflow-y: auto; border: 2px solid #000; padding: 15px;">
-          <h3 style="text-align: center; margin-bottom: 15px;">RINCIAN JAWABAN:</h3>
+        
+        <!-- Grafik Performa -->
+        <div style="margin: 20px 0; border: 2px solid #000; padding: 15px;">
+          <h3 style="text-align: center; margin-bottom: 15px;">GRAFIK PERFORMA PER SESI</h3>
+          <div style="position: relative; height: 200px; width: 100%; border: 1px solid #000; background: #f9f9f9;">
+            <!-- Grid lines -->
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+              <div style="position: absolute; top: 20%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
+              <div style="position: absolute; top: 40%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
+              <div style="position: absolute; top: 60%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
+              <div style="position: absolute; top: 80%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
+            </div>
+            
+            <!-- Line chart -->
+            <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
       `;
       
-      hasilJawaban.forEach((h, idx) => {
-        const status = h.hasil ? '✓ BENAR' : '✗ SALAH';
-        const warna = h.hasil ? 'benar' : 'salah';
+      // Calculate points for line chart
+      const points = semuaHasil.map((hasil, idx) => {
+        const x = (idx / (semuaHasil.length - 1)) * 100; // 0-100%
+        const y = 100 - (hasil.persentase || 0); // Invert Y (0% at top, 100% at bottom)
+        return `${x}%,${y}%`;
+      }).join(' ');
+      
+      // Create line path
+      hasilHTML += `
+                <polyline
+                  points="${points}"
+                  fill="none"
+                  stroke="${semuaHasil.length > 0 ? (semuaHasil[semuaHasil.length - 1].persentase >= 80 ? '#4CAF50' : semuaHasil[semuaHasil.length - 1].persentase >= 60 ? '#FF9800' : '#F44336') : '#000'}"
+                  stroke-width="3"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+                
+                <!-- Data points -->
+      `;
+      
+      // Add data points and labels
+      semuaHasil.forEach((hasil, idx) => {
+        const x = (idx / (semuaHasil.length - 1)) * 100;
+        const y = 100 - (hasil.persentase || 0);
+        const warnaPoint = hasil.persentase >= 80 ? '#4CAF50' : hasil.persentase >= 60 ? '#FF9800' : '#F44336';
+        
         hasilHTML += `
-          <div style="margin: 8px 0; padding: 8px; border-bottom: 1px solid #ccc;">
-            <strong>Soal ${idx + 1}:</strong> ${h.soal}<br>
-            <strong>Jawaban Anda:</strong> ${h.user} | <strong>Jawaban Benar:</strong> ${h.benar}<br>
-            <span class="${warna}"><strong>${status}</strong></span>
-          </div>
+                <circle cx="${x}%" cy="${y}%" r="4" fill="${warnaPoint}" stroke="#000" stroke-width="1"/>
+                
+                <!-- Labels -->
+                <text x="${x}%" y="${y - 5}%" text-anchor="middle" font-size="10" fill="#000">${hasil.persentase}%</text>
+                <text x="${x}%" y="95%" text-anchor="middle" font-size="12" fill="#000">S${hasil.sesi}</text>
         `;
       });
       
-      if (tidakDikerjakan > 0) {
+      hasilHTML += `
+            </svg>
+          </div>
+          
+          <!-- Legend -->
+          <div style="display: flex; justify-content: center; gap: 20px; margin-top: 10px; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <div style="width: 20px; height: 3px; background: #4CAF50;"></div>
+              <span>Sangat Baik (≥80%)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <div style="width: 20px; height: 3px; background: #FF9800;"></div>
+              <span>Cukup (60-79%)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <div style="width: 20px; height: 3px; background: #F44336;"></div>
+              <span>Perlu Improvement (<60%)</span>
+            </div>
+          </div>
+        </div>
+        
+        <div style="max-height: 400px; overflow-y: auto; border: 2px solid #000; padding: 15px;">
+          <h3 style="text-align: center; margin-bottom: 15px;">HASIL PER SESI:</h3>
+      `;
+      
+      semuaHasil.forEach((h, idx) => {
+        const persentaseSesi = (h.totalSoal > 0 ? (h.skor/h.totalSoal*100).toFixed(1) : 0);
         hasilHTML += `
-          <div style="margin: 10px 0; padding: 10px; background: #ffcccc; border: 2px solid #ff0000;">
-            <strong style="color: #8B0000;">⚠ TIDAK DIKERJAKAN: ${tidakDikerjakan} soal (nilai 0)</strong>
+          <div style="margin: 8px 0; padding: 8px; border-bottom: 1px solid #ccc;">
+            <strong>Sesi ${h.sesi} - ${h.kategori}:</strong> ${h.skor}/${h.totalSoal} (${persentaseSesi}%)<br>
+            <strong>Dikerjakan:</strong> ${h.totalSoal} dari 50 soal
           </div>
         `;
-      }
+      });
       
       hasilHTML += '</div>';
       container.innerHTML = hasilHTML;
