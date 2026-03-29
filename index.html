@@ -353,6 +353,7 @@
     let jawabanBenarSekarang = "";
     let hasilJawaban = []; // Simpan hasil untuk ditampilkan di akhir
     let waktuPerSoal = 1.2; // rata-rata 1.2 detik per soal (standar POLRI)
+    let recentAnswers = []; // Track recent answers to avoid repetition
 
     // Pool lengkap untuk diacak tiap sesi
     const poolHuruf = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
@@ -389,9 +390,29 @@
       // masterSet urutan asli, yang diacak hanya soal
       const soalAcak = [...masterSet].sort(() => Math.random() - 0.5);
       
-      // Pilih item yang akan hilang dari soal acak
-      indexHilang = Math.floor(Math.random() * 5);
-      hilang = soalAcak[indexHilang];
+      // Pilih item yang akan hilang dengan anti-repetition logic
+      let attempts = 0;
+      let maxAttempts = 10;
+      
+      do {
+        indexHilang = Math.floor(Math.random() * 5);
+        hilang = soalAcak[indexHilang];
+        
+        // Cek apakah jawaban ini muncul 2+ kali dalam 3 soal terakhir
+        const recentCount = recentAnswers.filter(ans => ans === hilang).length;
+        
+        if (recentCount < 2 || recentAnswers.length < 3) {
+          break; // Jawaban acceptable
+        }
+        
+        attempts++;
+      } while (attempts < maxAttempts);
+      
+      // Update recent answers tracking
+      recentAnswers.push(hilang);
+      if (recentAnswers.length > 3) {
+        recentAnswers.shift(); // Keep only last 3 answers
+      }
       
       // Soal = 4 item dari soalAcak (1 dihilangkan), lalu diacak lagi posisinya
       soalDitampilkan = soalAcak.filter((_, idx) => idx !== indexHilang).sort(() => Math.random() - 0.5);
@@ -565,6 +586,7 @@
       skor = 0;
       waktuTotal = 60;
       hasilJawaban = [];
+      recentAnswers = []; // Reset recent answers tracking
       acakMaster(); // master baru tiap sesi
       sudahJawab = false;
       document.getElementById('benar').textContent = '0';
