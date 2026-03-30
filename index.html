@@ -585,9 +585,9 @@
         sesi: sesiSekarang,
         kategori: ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'][jenis],
         skor: skor,
-        totalSoal: hasilJawaban.length,
-        persentase: (hasilJawaban.length > 0 ? (skor/hasilJawaban.length*100).toFixed(1) : 0),
-        waktuTerpakai: 60 - waktuTotal  // detik yang digunakan di sesi ini
+        totalDikerjakan: hasilJawaban.length,
+        persentase: (skor / 50 * 100).toFixed(1),
+        waktuTerpakai: 60 - waktuTotal
       });
       
       skorTotal += skor;
@@ -635,13 +635,13 @@
       const persentase = (skorTotal / totalSoalSemuaSesi * 100).toFixed(1);
 
       // ── ANALISIS ──────────────────────────────────────────────────────────
-      // 1. Kecepatan Kerja: rata-rata soal per menit (soal terjawab / waktu terpakai * 60)
-      const totalSoalDikerjakan = semuaHasil.reduce((a, h) => a + h.totalSoal, 0);
+      // 1. Kecepatan Kerja: rata-rata soal per menit (soal dikerjakan / waktu terpakai * 60)
+      const totalSoalDikerjakan = semuaHasil.reduce((a, h) => a + h.totalDikerjakan, 0);
       const totalWaktu = semuaHasil.reduce((a, h) => a + h.waktuTerpakai, 0);
       const soalPerMenit = totalWaktu > 0 ? (totalSoalDikerjakan / totalWaktu * 60) : 0;
 
-      // 2. Ketelitian Kerja: % jawaban benar dari semua soal dikerjakan
-      const ketelitian = totalSoalDikerjakan > 0 ? (skorTotal / totalSoalDikerjakan * 100) : 0;
+      // 2. Ketelitian Kerja: % jawaban benar dari 50 soal per sesi
+      const ketelitian = totalSoalSemuaSesi > 0 ? (skorTotal / totalSoalSemuaSesi * 100) : 0;
 
       // 3. Keajegan Kerja: konsistensi antar sesi (100 - standar deviasi persentase)
       const pctArr = semuaHasil.map(h => parseFloat(h.persentase) || 0);
@@ -680,11 +680,12 @@
       // ── HTML ──────────────────────────────────────────────────────────────
       let hasilPerSesiHTML = '';
       semuaHasil.forEach((h) => {
-        const pct = (h.totalSoal > 0 ? (h.skor / h.totalSoal * 100).toFixed(1) : 0);
+        const salah = h.totalDikerjakan - h.skor;
         hasilPerSesiHTML += `
           <div style="margin: 8px 0; padding: 8px; border-bottom: 1px solid #ccc;">
-            <strong>Sesi ${h.sesi} - ${h.kategori}:</strong> ${h.skor}/${h.totalSoal} (${pct}%)<br>
-            <strong>Dikerjakan:</strong> ${h.totalSoal} dari 50 soal
+            <strong>Sesi ${h.sesi} - ${h.kategori}</strong><br>
+            Benar: ${h.skor} &nbsp;|&nbsp; Salah: ${salah} &nbsp;|&nbsp; Tidak dijawab: ${50 - h.totalDikerjakan} &nbsp;|&nbsp; Total: 50 soal<br>
+            Persentase benar: ${h.skor} / 50 = <strong>${h.persentase}%</strong>
           </div>`;
       });
 
