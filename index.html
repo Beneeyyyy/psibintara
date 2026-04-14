@@ -298,6 +298,7 @@
       <button class="tab" onclick="pilihJenis(1)">ANGKA HILANG</button>
       <button class="tab" onclick="pilihJenis(2)">SIMBOL HILANG</button>
       <button class="tab" onclick="pilihJenis(3)">SOAL TAHUN LALU</button>
+      <button class="tab" onclick="pilihJenis(3)">SOAL TAHUN LALU</button>
     </div>
 
     <div class="info">
@@ -346,6 +347,7 @@
         <button class="tab active" onclick="pilihJenisStart(0)">HURUF HILANG</button>
         <button class="tab" onclick="pilihJenisStart(1)">ANGKA HILANG</button>
         <button class="tab" onclick="pilihJenisStart(2)">SIMBOL HILANG</button>
+        <button class="tab" onclick="pilihJenisStart(3)">SOAL TAHUN LALU</button>
         <button class="tab" onclick="pilihJenisStart(3)">SOAL TAHUN LALU</button>
       </div>
     </div>
@@ -398,6 +400,20 @@
       masterHuruf = shuffle(poolHuruf).slice(0, 5);
       masterAngka = shuffle(poolAngka).slice(0, 5);
       masterSimbol = shuffle(poolSimbol).slice(0, 5);
+      
+      // Untuk SOAL TAHUN LALU, gunakan master set spesifik
+      if (jenis === 3) {
+        const setIndex = sesiSekarang - 1; // 0-based index
+        const fixedSessions = [0, 1, 5, 6]; // Sesi 1,2,6,7 (0-based)
+        
+        if (fixedSessions.includes(setIndex)) {
+          // Sesi tetap, tidak diacak
+          masterTahunLalu = [...masterTahunLaluSets[setIndex]];
+        } else {
+          // Sesi acak posisi
+          masterTahunLalu = shuffle(masterTahunLaluSets[setIndex]);
+        }
+      }
       
       // Untuk SOAL TAHUN LALU, gunakan master set spesifik
       if (jenis === 3) {
@@ -485,6 +501,10 @@
       semuaHasil = [];
       // Gunakan kategori yang dipilih user, jangan random
       // jenis sudah diset oleh pilihJenisStart()
+      // Untuk kategori lain (bukan tahun lalu), random untuk konsistensi
+      if (jenis !== 3) {
+        jenis = Math.floor(Math.random() * 3);
+      }
       // Untuk kategori lain (bukan tahun lalu), random untuk konsistensi
       if (jenis !== 3) {
         jenis = Math.floor(Math.random() * 3);
