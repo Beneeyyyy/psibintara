@@ -297,6 +297,7 @@
       <button class="tab active" onclick="pilihJenis(0)">HURUF HILANG</button>
       <button class="tab" onclick="pilihJenis(1)">ANGKA HILANG</button>
       <button class="tab" onclick="pilihJenis(2)">SIMBOL HILANG</button>
+      <button class="tab" onclick="pilihJenis(3)">SOAL TAHUN LALU</button>
     </div>
 
     <div class="info">
@@ -315,7 +316,7 @@
     <div class="feedback" id="feedback"></div>
 
     <div style="text-align:center;">
-      <button onclick="nextSoal()">SOAL BERIKUTNYA →</button>
+      <button onclick="lanjutSesiBerikutnya()">LANJUT KE SESI BERIKUTNYA</button>
       <button onclick="resetTes()">RESET TES</button>
     </div>
 
@@ -345,6 +346,7 @@
         <button class="tab active" onclick="pilihJenisStart(0)">HURUF HILANG</button>
         <button class="tab" onclick="pilihJenisStart(1)">ANGKA HILANG</button>
         <button class="tab" onclick="pilihJenisStart(2)">SIMBOL HILANG</button>
+        <button class="tab" onclick="pilihJenisStart(3)">SOAL TAHUN LALU</button>
       </div>
     </div>
     <div style="text-align: center; margin: 30px 0;">
@@ -353,7 +355,7 @@
   </div>
 
   <script>
-    let jenis = 0; // 0=huruf, 1=angka, 2=simbol
+    let jenis = 0; // 0=huruf, 1=angka, 2=simbol, 3=tahun lalu
     let sesiSekarang = 1;
     let totalSesi = 10;
     let soalSekarang = 0;
@@ -375,13 +377,41 @@
     const kolomJawaban = ['A', 'B', 'C', 'D', 'E'];
 
     // Master set berubah tiap sesi
-    let masterHuruf, masterAngka, masterSimbol;
+    let masterHuruf, masterAngka, masterSimbol, masterTahunLalu;
+    
+    // Master set spesifik untuk SOAL TAHUN LALU
+    const masterTahunLaluSets = [
+      ['M','H','L','R','W'], // Sesi 1 - Tetap
+      ['F','K','P','T','Y'], // Sesi 2 - Tetap
+      ['K','W','C','N','P'], // Sesi 3 - Acak posisi
+      ['C','T','F','Y','M'], // Sesi 4 - Acak posisi
+      ['P','R','W','H','T'], // Sesi 5 - Acak posisi
+      ['W','R','L','H','M'], // Sesi 6 - Tetap
+      ['F','K','P','T','Y'], // Sesi 7 - Tetap
+      ['P','N','C','W','K'], // Sesi 8 - Acak posisi
+      ['M','Y','F','T','C'], // Sesi 9 - Acak posisi
+      ['P','R','W','H','T']  // Sesi 10 - Acak posisi
+    ];
 
     function acakMaster() {
       const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
       masterHuruf = shuffle(poolHuruf).slice(0, 5);
       masterAngka = shuffle(poolAngka).slice(0, 5);
       masterSimbol = shuffle(poolSimbol).slice(0, 5);
+      
+      // Untuk SOAL TAHUN LALU, gunakan master set spesifik
+      if (jenis === 3) {
+        const setIndex = sesiSekarang - 1; // 0-based index
+        const fixedSessions = [0, 1, 5, 6]; // Sesi 1,2,6,7 (0-based)
+        
+        if (fixedSessions.includes(setIndex)) {
+          // Sesi tetap, tidak diacak
+          masterTahunLalu = [...masterTahunLaluSets[setIndex]];
+        } else {
+          // Sesi acak posisi
+          masterTahunLalu = shuffle(masterTahunLaluSets[setIndex]);
+        }
+      }
     }
 
     function pilihJenis(j) {
@@ -398,7 +428,8 @@
 
       if (jenis === 0) masterSet = [...masterHuruf];
       else if (jenis === 1) masterSet = [...masterAngka];
-      else masterSet = [...masterSimbol];
+      else if (jenis === 2) masterSet = [...masterSimbol];
+      else masterSet = [...masterTahunLalu];
 
       // masterSet urutan asli, yang diacak hanya soal
       const soalAcak = [...masterSet].sort(() => Math.random() - 0.5);
@@ -454,6 +485,10 @@
       semuaHasil = [];
       // Gunakan kategori yang dipilih user, jangan random
       // jenis sudah diset oleh pilihJenisStart()
+      // Untuk kategori lain (bukan tahun lalu), random untuk konsistensi
+      if (jenis !== 3) {
+        jenis = Math.floor(Math.random() * 3);
+      }
       resetSesi();
     }
 
@@ -477,7 +512,7 @@
       document.getElementById('feedback').innerHTML = '';
       
       // Update kategori info
-      const namaKategori = ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'];
+      const namaKategori = ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG', 'SOAL TAHUN LALU'];
       document.getElementById('kategoriInfo').textContent = `Kategori: ${namaKategori[jenis]}`;
       
       tampilSoal();
@@ -565,6 +600,14 @@
       nextSoal();
     }
 
+    function lanjutSesiBerikutnya() {
+      // Hentikan timer sesi saat ini
+      clearInterval(timerInterval);
+      
+      // Selesaikan sesi saat ini dan lanjut ke sesi berikutnya
+      selesaiSesi();
+    }
+
     function nextSoal() {
       soalSekarang++;
       if (waktuTotal <= 0) { // waktu habis, selesai sesi
@@ -582,7 +625,7 @@
       // Simpan hasil sesi ini
       semuaHasil.push({
         sesi: sesiSekarang,
-        kategori: ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'][jenis],
+        kategori: ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG', 'SOAL TAHUN LALU'][jenis],
         skor: skor,
         totalSoal: hasilJawaban.length,
         persentase: (hasilJawaban.length > 0 ? (skor/hasilJawaban.length*100).toFixed(1) : 0)
@@ -618,7 +661,7 @@
       document.getElementById('countdownTimer').textContent = countdown; // Set initial value
       
       // Tampilkan kategori yang sama untuk sesi berikutnya
-      const namaKategori = ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG'];
+      const namaKategori = ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG', 'SOAL TAHUN LALU'];
       document.getElementById('nextKategori').textContent = `Sesi berikutnya: ${namaKategori[jenis]}`;
       
       console.log('Memulai countdown dari 3');
