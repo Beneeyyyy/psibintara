@@ -1,0 +1,502 @@
+// ============================================================
+// MODEL
+// ============================================================
+
+public function getPeriode($term) {
+    $sql = "SELECT gl_period_id, period_name
+    FROM (
+        SELECT gp.gl_period_id,
+               gp.period_name,
+               gp.start_date,
+               ROW_NUMBER() OVER (PARTITION BY gp.period_name 
+                                  ORDER BY gp.start_date ASC) as rn
+        FROM gl.gl_period gp
+        WHERE gp.period_name LIKE ?
+    ) sub
+    WHERE rn = 1
+    ORDER BY start_date ASC";
+
+    return $this->db->query($sql, ["%" . $term . "%"])->result_array();
+}
+
+public function getJurnalGl($limit, $offset, $search = null, $order_colom_name = null, $order_direc = null, $periode_id = null)
+{
+    // [BERUBAH-1] Whitelist mapping kolom sort — cegah SQL injection + pastikan nama kolom valid
+    $sortMap = [
+        'h.source'            => 'h.source',
+        'coa'                 => "gac.segment1||gac.segment2||gac.segment3||gac.segment4||gac.segment5||gac.segment6||gac.segment7",
+        'cabang'              => 'al2.description',
+        'kode_cc'             => 'gac.segment4',
+        'deskripsi_cc'        => 'al4.description',
+        'account'             => 'gac.segment3',
+        'account_description' => 'h.event_name',
+        'gj.gl_date'          => 'gj.gl_date',
+        'event_class'         => 'h.event_class',
+        'period_name'         => 'gp.period_name',
+        'transaction_number'  => 'transaction_number',
+        'debit'               => 'gj.debit',
+        'credit'              => 'gj.credit',
+        'nominal'             => 'nominal',
+    ];
+
+    $order_colom_name = isset($sortMap[$order_colom_name])
+        ? $sortMap[$order_colom_name]
+        : 'gj.gl_jurnal_id'; // [BERUBAH-1] fallback aman
+
+    if ($order_direc == null) {
+        $order_direc = 'DESC';
+    }
+
+    $params = [];
+
+    // [BERUBAH-2] Search diperluas ke semua kolom yang tampil di tabel
+    if ($search != null && $search != '') {
+        $attr = "WHERE gj.active_flag = 'Y'
+            AND (
+                upper(h.source)          LIKE ?
+                OR upper(h.event_name)     LIKE ?
+                OR upper(h.event_class)    LIKE ?
+                OR upper(gp.period_name)   LIKE ?
+                OR upper(al2.description)  LIKE ?
+                OR upper(al4.description)  LIKE ?
+                OR upper(gac.segment3)     LIKE ?
+                OR upper(gac.segment4)     LIKE ?
+                OR upper(COALESCE(
+                    gj.transaction_id::text,
+                    aih.invoice_number::text,
+                    acr.receipt_number::text,
+                    acr_a.receipt_number::text,
+                    apih.invoice_number::text,
+                    apph.payment_number::text
+                ))                         LIKE ?
+            )";
+        $p = "%" . strtoupper($search) . "%";
+        $params = [$p, $p, $p, $p, $p, $p, $p, $p, $p];
+    } else {
+        $attr = "WHERE gj.active_flag = 'Y'";
+    }
+
+    // Filter periode
+    if ($periode_id != null && $periode_id != '') {
+        $attr .= " AND gj.period_id = ?";
+        $params[] = $periode_id;
+    }
+
+    $exec = "WITH desc_helper AS (
+            SELECT
+                al.description   AS source,
+                alec.description AS event_class,
+                ale.description  AS event_name,
+                gsas.source_id,
+                gsas.event_class_id,
+                gsas.event_id
+            FROM gl.gl_subledger_accounting_setup gsas
+            JOIN appl.appl_lookup al ON
+                al.active_flag = 'Y' AND gsas.active_flag = 'Y'
+                AND al.reference = 'GL_SUBLEDGER_ACCOUNTING_SETUP'
+                AND al.lookup_type = 'SOURCE_ID'
+                AND al.lookup_value = gsas.source_id::text
+            JOIN appl.appl_lookup alec ON
+                alec.active_flag = 'Y'
+                AND alec.reference = 'GL_SUBLEDGER_ACCOUNTING_SETUP'
+                AND alec.lookup_type = 'EVENT_CLASS_ID'
+                AND alec.lookup_value = gsas.event_class_id::text
+            JOIN appl.appl_lookup ale ON
+                ale.active_flag = 'Y'
+                AND ale.reference = 'GL_SUBLEDGER_ACCOUNTING_SETUP'
+                AND ale.lookup_type = 'EVENT_ID'
+                AND ale.lookup_value = gsas.event_id::text
+            LEFT JOIN gl.gl_account_combination gac ON
+                gac.active_flag = 'Y'
+                AND gac.account_combination_id = gsas.account_combination_id
+        )
+        SELECT
+            h.source,
+            gac.segment1||' - '||gac.segment2||' - '||gac.segment3||' - '||
+            gac.segment4||' - '||gac.segment5||' - '||gac.segment6||' - '||
+            gac.segment7 AS coa,
+            al2.description AS cabang,
+            gac.segment4    AS kode_cc,
+            al4.description AS deskripsi_cc,
+            gac.segment3    AS account,
+            h.event_name    AS account_description,
+            gj.gl_date,
+            h.event_class,
+            gp.period_name,
+            COALESCE(
+                gj.transaction_id::text,
+                aih.invoice_number::text,
+                acr.receipt_number::text,
+                acr_a.receipt_number::text,
+                apih.invoice_number::text,
+                apph.payment_number::text
+            ) AS transaction_number,
+            gj.debit,
+            gj.credit,
+            CASE WHEN gj.debit != 0 THEN gj.debit ELSE gj.credit END AS nominal
+        FROM gl.gl_jurnal gj
+        LEFT JOIN desc_helper h ON
+            gj.source_id = h.source_id
+            AND gj.event_class_id = h.event_class_id
+            AND gj.event_id = h.event_id
+        LEFT JOIN gl.gl_account_combination gac ON
+            gj.account_combination_id = gac.account_combination_id
+            AND gac.active_flag = 'Y'
+        LEFT JOIN appl.appl_lookup al2 ON
+            al2.active_flag = 'Y'
+            AND al2.reference = 'GL_ACCOUNT_COMBINATION'
+            AND al2.lookup_type = 'SEGMENT_2'
+            AND al2.lookup_value = gac.segment2
+        LEFT JOIN appl.appl_lookup al4 ON
+            al4.active_flag = 'Y'
+            AND al4.reference = 'GL_ACCOUNT_COMBINATION'
+            AND al4.lookup_type = 'SEGMENT_4'
+            AND al4.lookup_value = gac.segment4
+        LEFT JOIN ar.ar_invoice_header aih ON
+            aih.active_flag = 'Y' AND gj.source_id = 1
+            AND gj.event_class_id = 1
+            AND aih.invoice_header_id = gj.source_header_id
+        LEFT JOIN ar.ar_cash_receipt acr ON
+            acr.active_flag = 'Y' AND gj.source_id = 1
+            AND gj.event_class_id = 2
+            AND acr.cash_receipt_id = gj.source_header_id
+        LEFT JOIN ar.ar_cash_receipt_application acra ON
+            acra.active_flag = 'Y' AND gj.source_id = 1
+            AND gj.event_class_id = 9
+            AND acra.cash_receipt_application_id = gj.source_header_id
+        LEFT JOIN ar.ar_cash_receipt acr_a ON
+            acr_a.active_flag = 'Y'
+            AND acr_a.cash_receipt_id = acra.cash_receipt_id
+        LEFT JOIN ap.ap_invoice_header apih ON
+            apih.active_flag = 'Y' AND gj.source_id = 3
+            AND gj.event_class_id = 6
+            AND apih.header_id = gj.source_header_id
+        LEFT JOIN ap.ap_payment_header apph ON
+            apph.active_flag = 'Y' AND gj.source_id = 3
+            AND gj.event_class_id IN (7, 8)
+            AND apph.header_id = gj.source_header_id
+        LEFT JOIN gl.gl_period gp ON
+            gp.gl_period_id = gj.period_id
+            AND gp.active_flag = 'Y'
+            AND gp.application_id = '3'
+        $attr
+        ORDER BY $order_colom_name $order_direc
+        LIMIT $limit OFFSET $offset";
+
+    return $this->db->query($exec, $params)->result_array();
+}
+
+public function countAllData($periode_id = null)
+{
+    $attr   = "WHERE gj.active_flag = 'Y'";
+    $params = [];
+    if ($periode_id != null && $periode_id != '') {
+        $attr .= " AND gj.period_id = ?";
+        $params[] = $periode_id;
+    }
+    $exec = "SELECT COUNT(gj.gl_jurnal_id) FROM gl.gl_jurnal gj $attr";
+    return $this->db->query($exec, $params)->row()->count;
+}
+
+public function filteredCount($search, $periode_id = null)
+{
+    // [BERUBAH-3] Search diperluas sama seperti getJurnalGl
+    $p      = "%" . strtoupper($search) . "%";
+    $params = [$p, $p, $p, $p, $p, $p, $p, $p, $p];
+    $attr   = "WHERE gj.active_flag = 'Y'
+        AND (
+            upper(h.source)          LIKE ?
+            OR upper(h.event_name)     LIKE ?
+            OR upper(h.event_class)    LIKE ?
+            OR upper(gp.period_name)   LIKE ?
+            OR upper(al2.description)  LIKE ?
+            OR upper(al4.description)  LIKE ?
+            OR upper(gac.segment3)     LIKE ?
+            OR upper(gac.segment4)     LIKE ?
+            OR upper(COALESCE(
+                gj.transaction_id::text,
+                aih.invoice_number::text,
+                acr.receipt_number::text,
+                acr_a.receipt_number::text,
+                apih.invoice_number::text,
+                apph.payment_number::text
+            ))                         LIKE ?
+        )";
+
+    if ($periode_id != null && $periode_id != '') {
+        $attr .= " AND gj.period_id = ?";
+        $params[] = $periode_id;
+    }
+
+    $exec = "WITH desc_helper AS (
+        SELECT al.description AS source, alec.description AS event_class,
+               ale.description AS event_name,
+               gsas.source_id, gsas.event_class_id, gsas.event_id
+        FROM gl.gl_subledger_accounting_setup gsas
+        JOIN appl.appl_lookup al ON al.active_flag='Y' AND gsas.active_flag='Y'
+            AND al.reference='GL_SUBLEDGER_ACCOUNTING_SETUP'
+            AND al.lookup_type='SOURCE_ID' AND al.lookup_value=gsas.source_id::text
+        JOIN appl.appl_lookup alec ON alec.active_flag='Y'
+            AND alec.reference='GL_SUBLEDGER_ACCOUNTING_SETUP'
+            AND alec.lookup_type='EVENT_CLASS_ID'
+            AND alec.lookup_value=gsas.event_class_id::text
+        JOIN appl.appl_lookup ale ON ale.active_flag='Y'
+            AND ale.reference='GL_SUBLEDGER_ACCOUNTING_SETUP'
+            AND ale.lookup_type='EVENT_ID' AND ale.lookup_value=gsas.event_id::text
+    )
+    SELECT COUNT(gj.gl_jurnal_id)
+    FROM gl.gl_jurnal gj
+    LEFT JOIN desc_helper h ON
+        gj.source_id=h.source_id AND gj.event_class_id=h.event_class_id
+        AND gj.event_id=h.event_id
+    LEFT JOIN gl.gl_account_combination gac ON
+        gj.account_combination_id=gac.account_combination_id AND gac.active_flag='Y'
+    LEFT JOIN appl.appl_lookup al2 ON
+        al2.active_flag='Y' AND al2.reference='GL_ACCOUNT_COMBINATION'
+        AND al2.lookup_type='SEGMENT_2' AND al2.lookup_value=gac.segment2
+    LEFT JOIN appl.appl_lookup al4 ON
+        al4.active_flag='Y' AND al4.reference='GL_ACCOUNT_COMBINATION'
+        AND al4.lookup_type='SEGMENT_4' AND al4.lookup_value=gac.segment4
+    LEFT JOIN gl.gl_period gp ON
+        gp.gl_period_id=gj.period_id AND gp.active_flag='Y' AND gp.application_id='3'
+    LEFT JOIN ar.ar_invoice_header aih ON
+        aih.active_flag='Y' AND gj.source_id=1 AND gj.event_class_id=1
+        AND aih.invoice_header_id=gj.source_header_id
+    LEFT JOIN ar.ar_cash_receipt acr ON
+        acr.active_flag='Y' AND gj.source_id=1 AND gj.event_class_id=2
+        AND acr.cash_receipt_id=gj.source_header_id
+    LEFT JOIN ar.ar_cash_receipt_application acra ON
+        acra.active_flag='Y' AND gj.source_id=1 AND gj.event_class_id=9
+        AND acra.cash_receipt_application_id=gj.source_header_id
+    LEFT JOIN ar.ar_cash_receipt acr_a ON
+        acr_a.active_flag='Y' AND acr_a.cash_receipt_id=acra.cash_receipt_id
+    LEFT JOIN ap.ap_invoice_header apih ON
+        apih.active_flag='Y' AND gj.source_id=3 AND gj.event_class_id=6
+        AND apih.header_id=gj.source_header_id
+    LEFT JOIN ap.ap_payment_header apph ON
+        apph.active_flag='Y' AND gj.source_id=3 AND gj.event_class_id IN (7,8)
+        AND apph.header_id=gj.source_header_id
+    $attr";
+
+    return $this->db->query($exec, $params)->row()->count;
+}
+
+
+// ============================================================
+// CONTROLLER
+// ============================================================
+
+public function getPeriode()
+{
+    $term   = $this->input->post('term');
+    $result = $this->M_generalledger->getPeriode($term ? $term : '');
+    $this->output
+        ->set_content_type('application/json')
+        ->set_output(json_encode($result));
+}
+
+public function getJurnalGL()
+{
+    try {
+        $limit      = (int) ($this->input->post('length') ? $this->input->post('length') : 10);
+        $offset     = (int) ($this->input->post('start')  ? $this->input->post('start')  : 0);
+        $periode_id = $this->input->post('periode_id');
+
+        $orderDir    = 'DESC';
+        $orderColumn = null;
+
+        if (isset($_POST['order'][0]['dir'])) {
+            $orderDir = strtoupper($_POST['order'][0]['dir']) === 'ASC' ? 'ASC' : 'DESC';
+        }
+        if (isset($_POST['order'][0]['column'])) {
+            $idx = $_POST['order'][0]['column'];
+            if (isset($_POST['columns'][$idx]['name']) && !empty($_POST['columns'][$idx]['name'])) {
+                $orderColumn = $_POST['columns'][$idx]['name'];
+            }
+        }
+
+        $search = '';
+        $searchPost = $this->input->post('search');
+        if ($searchPost && isset($searchPost['value'])) {
+            $search = $searchPost['value'];
+        }
+
+        $result              = $this->M_generalledger->getJurnalGl($limit, $offset, $search, $orderColumn, $orderDir, $periode_id);
+        $total_rows          = $this->M_generalledger->countAllData($periode_id);
+        $total_rows_filtered = ($search != '') ? $this->M_generalledger->filteredCount($search, $periode_id) : $total_rows;
+
+        $this->output
+            ->set_content_type('application/json')
+            ->set_status_header(200)
+            ->set_output(json_encode([
+                'status'          => '200',
+                'draw'            => (int) $this->input->post('draw'),
+                'recordsTotal'    => (int) $total_rows,
+                'recordsFiltered' => (int) $total_rows_filtered,
+                'data'            => $result
+            ]));
+
+    } catch (Exception $e) {
+        $this->output
+            ->set_content_type('application/json')
+            ->set_status_header(500)
+            ->set_output(json_encode([
+                'status'  => '500',
+                'message' => $e->getMessage()
+            ]));
+    }
+}
+
+
+// ============================================================
+// VIEW
+// ============================================================
+<link type="text/css" rel="stylesheet" href="<?= base_url('assets/css/customSTDKHS.css?v='.time()) ?>" />
+<script src="<?= base_url('assets/js/customSTDKHS.js?version='. filemtime('assets/js/customSTDKHS.js')) ?>"></script>
+
+<section class="custom-section">
+    <div class="custom-header--white flex--space-between">
+        <h3><i class="fa fa-tags mr-2"></i> <?= $Header ?> - Jurnal</h3>
+    </div>
+
+    <div class="box box-solid custom-card">
+        <div class="box-body">
+            <div class="std-form-group inline" style="width: 60%;">
+                <label style="width: 15%">Periode</label>
+                <div class="std-input-group">
+                    <select autocomplete="off" class="form-control" data-placeholder="Silakan pilih periode di sini..." id="selectPeriodeGL" style="width: 100%;">
+                        <option value=""></option>
+                    </select>
+                    <div class="form-helper">*Silahkan pilih periode untuk melihat jurnal berdasarkan periode tertentu</div>
+                </div>
+                <button type="button" class="btn btn-primary btn-md text-bold btn-search-jurnal-periode" disabled style="margin-left: 8px">
+                    <i class="fa fa-search"></i> Cari
+                </button>
+            </div>
+
+            <hr><br>
+
+            <div class="table-responsive" style="border-radius: 6px;">
+                <table id="jurnalAll" width="100%" class="table table-bordered table-hover table-primary table-striped tabel-data">
+                    <thead class="bg-primary">
+                        <th class="text-center" style="width:20px">No.</th>
+                        <th class="text-center">Source</th>
+                        <th class="text-center">COA</th>
+                        <th class="text-center">Cabang (OU)</th>
+                        <th class="text-center">Kode CC</th>
+                        <th class="text-center">Deskripsi CC</th>
+                        <th class="text-center">Akun</th>
+                        <th class="text-center">Deskripsi Akun</th>
+                        <th class="text-center">GL Date</th>
+                        <th class="text-center">Event Class</th>
+                        <th class="text-center">Transaction Number</th>
+                        <th class="text-center">Site</th>
+                        <th class="text-center">Invoice Witholding Tax</th>
+                        <th class="text-center">PO Number</th>
+                        <th class="text-center">Pihak yang Berelasi (Vendor/Konsumen)</th>
+                        <th class="text-center">Kode Item</th>
+                        <th class="text-center">QTY</th>
+                        <th class="text-center">OUM</th>
+                        <th class="text-center">Line Description</th>
+                        <th class="text-center">Debit</th>
+                        <th class="text-center">Credit</th>
+                        <th class="text-center">Nominal</th>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+$(document).ready(function () {
+    elementStandardization();
+
+    // ── Select2 Periode ──────────────────────────────────────
+    // Destroy dulu kalau elementStandardization sudah init
+    if ($("#selectPeriodeGL").data('select2')) {
+        $("#selectPeriodeGL").select2('destroy');
+    }
+    $("#selectPeriodeGL").select2({
+        placeholder: 'Silakan pilih periode di sini...',
+        allowClear: true,
+        minimumInputLength: 0,
+        ajax: {
+            url: baseurl + "QHS/GeneralLedger/getPeriode",
+            dataType: 'json',
+            type: 'POST',
+            delay: 250,
+            data: function (params) {
+                return { term: params.term || '' };
+            },
+            processResults: function (data) {
+                return {
+                    results: data.map(function (item) {
+                        return { id: item.gl_period_id, text: item.period_name };
+                    })
+                };
+            },
+            cache: true
+        }
+    });
+
+    // Enable tombol Cari saat periode dipilih
+    $("#selectPeriodeGL").on('select2:select select2:clear', function () {
+        var val = $(this).val();
+        $('.btn-search-jurnal-periode').prop('disabled', !val);
+    });
+
+    // ── DataTable ────────────────────────────────────────────
+    function emptyDash(d) {
+        return (d === null || d === undefined || d === '') ? '-' : d;
+    }
+
+    var table = $('#jurnalAll').DataTable({
+        dom: 'Bfrtip',
+        buttons: ['excel', 'copy', 'pageLength', 'pdf'],
+        processing: true,
+        searchDelay: 1000,
+        scrollX: true,
+        language: { processing: "Loading..." },
+        serverSide: true,
+        ajax: {
+            url: baseurl + 'QHS/GeneralLedger/getJurnalGL',
+            type: 'POST',
+            data: function (d) {
+                // kirim periode_id ke controller setiap request
+                d.periode_id = $("#selectPeriodeGL").val() || '';
+                return d;
+            }
+        },
+        columns: [
+            { data: null, orderable: false, name: null, render: function(d, t, r, m) { return m.row + m.settings._iDisplayStart + 1; } },
+            { className: 'text-left',   data: 'source',              name: 'h.source',            render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'coa',                 name: 'coa',                 render: function(d) { return emptyDash(d); } },
+            { className: 'text-left',   data: 'cabang',              name: 'cabang',              render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'kode_cc',             name: 'kode_cc',             render: function(d) { return emptyDash(d); } },
+            { className: 'text-left',   data: 'deskripsi_cc',        name: 'deskripsi_cc',        render: function(d) { return emptyDash(d); } },
+            { className: 'text-left',   data: 'account',             name: 'account',             render: function(d) { return emptyDash(d); } },
+            { className: 'text-left',   data: 'account_description', name: 'account_description', render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'gl_date',             name: 'gj.gl_date',          render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'event_class',         name: 'event_class',         render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'transaction_number',  name: 'transaction_number',  render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'vendor_site_code',    name: 'vendor_site_code',    render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'invoiceWitholding',   name: 'invoiceWitholding',   render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'poNumber',            name: 'poNumber',            render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'vendor',              name: 'vendor',              render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'kodeItem',            name: 'kodeItem',            render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'qty',                 name: 'qty',                 render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'uom',                 name: 'uom',                 render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'line',                name: 'line',                render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'debit',               name: 'debit',               render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'credit',              name: 'credit',              render: function(d) { return emptyDash(d); } },
+            { className: 'text-center', data: 'nominal',             name: 'nominal',             render: function(d) { return emptyDash(d); } }
+        ]
+    });
+
+    // ── Tombol Cari → reload DataTable dengan periode terpilih
+    $('.btn-search-jurnal-periode').on('click', function () {
+        table.ajax.reload();
+    });
+});
+</script>

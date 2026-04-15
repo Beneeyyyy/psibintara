@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Latihan Kecermatan Bintara Polri</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: 'Courier New', monospace;
@@ -656,9 +657,9 @@
         // Semua sesi selesai
         tampilkanHasilAkhir();
       } else {
-        // Langsung ke sesi berikutnya tanpa countdown
+        // Tampilkan countdown 3 detik sebelum lanjut ke sesi berikutnya
         sesiSekarang++;
-        resetSesi();
+        tampilkanCountdown();
       }
     }
 
@@ -720,72 +721,23 @@
         <!-- Grafik Performa -->
         <div style="margin: 20px 0; border: 2px solid #000; padding: 15px;">
           <h3 style="text-align: center; margin-bottom: 15px;">GRAFIK PERFORMA PER SESI</h3>
-          <div style="position: relative; height: 200px; width: 100%; border: 1px solid #000; background: #f9f9f9;">
-            <!-- Grid lines -->
-            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
-              <div style="position: absolute; top: 20%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
-              <div style="position: absolute; top: 40%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
-              <div style="position: absolute; top: 60%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
-              <div style="position: absolute; top: 80%; left: 0; right: 0; border-top: 1px dashed #ccc;"></div>
-            </div>
-            
-            <!-- Line chart -->
-            <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
-      `;
-      
-      // Calculate points for line chart
-      const points = semuaHasil.map((hasil, idx) => {
-        const x = (idx / (semuaHasil.length - 1)) * 100; // 0-100%
-        const y = 100 - (hasil.persentase || 0); // Invert Y (0% at top, 100% at bottom)
-        return `${x}%,${y}%`;
-      }).join(' ');
-      
-      // Create line path
-      hasilHTML += `
-                <polyline
-                  points="${points}"
-                  fill="none"
-                  stroke="${semuaHasil.length > 0 ? (semuaHasil[semuaHasil.length - 1].persentase >= 80 ? '#4CAF50' : semuaHasil[semuaHasil.length - 1].persentase >= 60 ? '#FF9800' : '#F44336') : '#000'}"
-                  stroke-width="3"
-                  stroke-linejoin="round"
-                  stroke-linecap="round"
-                />
-                
-                <!-- Data points -->
-      `;
-      
-      // Add data points and labels
-      semuaHasil.forEach((hasil, idx) => {
-        const x = (idx / (semuaHasil.length - 1)) * 100;
-        const y = 100 - (hasil.persentase || 0);
-        const warnaPoint = hasil.persentase >= 80 ? '#4CAF50' : hasil.persentase >= 60 ? '#FF9800' : '#F44336';
-        
-        hasilHTML += `
-                <circle cx="${x}%" cy="${y}%" r="4" fill="${warnaPoint}" stroke="#000" stroke-width="1"/>
-                
-                <!-- Labels -->
-                <text x="${x}%" y="${y - 5}%" text-anchor="middle" font-size="10" fill="#000">${hasil.persentase}%</text>
-                <text x="${x}%" y="95%" text-anchor="middle" font-size="12" fill="#000">S${hasil.sesi}</text>
-        `;
-      });
-      
-      hasilHTML += `
-            </svg>
+          <div style="position: relative; height: 300px; width: 100%;">
+            <canvas id="performanceChart"></canvas>
           </div>
           
           <!-- Legend -->
           <div style="display: flex; justify-content: center; gap: 20px; margin-top: 10px; font-size: 12px;">
             <div style="display: flex; align-items: center; gap: 5px;">
               <div style="width: 20px; height: 3px; background: #4CAF50;"></div>
-              <span>Sangat Baik (≥80%)</span>
+              <span>Sangat Baik (>=40)</span>
             </div>
             <div style="display: flex; align-items: center; gap: 5px;">
               <div style="width: 20px; height: 3px; background: #FF9800;"></div>
-              <span>Cukup (60-79%)</span>
+              <span>Cukup (30-39)</span>
             </div>
             <div style="display: flex; align-items: center; gap: 5px;">
               <div style="width: 20px; height: 3px; background: #F44336;"></div>
-              <span>Perlu Improvement (<60%)</span>
+              <span>Perlu Improvement (<30)</span>
             </div>
           </div>
         </div>
@@ -805,7 +757,223 @@
       });
       
       hasilHTML += '</div>';
+      
+      // Add performance assessment
+      hasilHTML += generatePerformanceAssessment();
+      
       container.innerHTML = hasilHTML;
+      
+      // Initialize Chart.js after HTML is rendered
+      setTimeout(() => {
+        initializeChart();
+      }, 100);
+    }
+    
+    function generatePerformanceAssessment() {
+      // Calculate performance metrics
+      const totalBenar = semuaHasil.reduce((sum, h) => sum + h.skor, 0);
+      const totalSoal = semuaHasil.reduce((sum, h) => sum + h.totalSoal, 0);
+      const rataRataBenar = totalBenar / semuaHasil.length;
+      
+      // Kecepatan Kerja: berdasarkan rata-rata jawaban benar per menit (50 soal/menit)
+      const kecepatanKerja = (rataRataBenar / 50) * 100; // persentase dari kecepatan ideal
+      
+      // Ketelitian Kerja: berdasarkan persentase akurasi total
+      const ketelitianKerja = (totalBenar / (totalSesi * 50)) * 100;
+      
+      // Keajegan Kerja: berdasarkan konsistensi (standar deviasi kecil = lebih ajeg)
+      const skorPerSesi = semuaHasil.map(h => h.skor);
+      const rataRataSkor = skorPerSesi.reduce((a, b) => a + b, 0) / skorPerSesi.length;
+      const varians = skorPerSesi.reduce((sum, skor) => sum + Math.pow(skor - rataRataSkor, 2), 0) / skorPerSesi.length;
+      const standarDeviasi = Math.sqrt(varians);
+      const keajeganKerja = Math.max(0, 100 - (standarDeviasi * 10)); // semakin kecil SD, semakin tinggi keajegan
+      
+      // Ketahanan Kerja: berdasarkan performa sesi akhir vs awal
+      const skorAwal = semuaHasil[0]?.skor || 0;
+      const skorAkhir = semuaHasil[semuaHasil.length - 1]?.skor || 0;
+      const ketahananKerja = (skorAkhir / skorAwal) * 100;
+      
+      // Categorize performance
+      const kategoriPerforma = (nilai) => {
+        if (nilai >= 85) return 'Sangat Tinggi';
+        if (nilai >= 70) return 'Tinggi';
+        if (nilai >= 55) return 'Sedang';
+        return 'Rendah';
+      };
+      
+      const warnaPerforma = (nilai) => {
+        if (nilai >= 85) return '#4CAF50';
+        if (nilai >= 70) return '#2196F3';
+        if (nilai >= 55) return '#FF9800';
+        return '#F44336';
+      };
+      
+      let assessmentHTML = `
+        <div style="margin: 20px 0; border: 2px solid #000; padding: 15px;">
+          <h3 style="text-align: center; margin-bottom: 20px;">EVALUASI KINERJA</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            
+            <div style="text-align: center; padding: 10px; border: 1px solid #000;">
+              <h4 style="margin: 5px 0; font-size: 14px;">KECEPATAN KERJA</h4>
+              <div style="font-size: 24px; font-weight: bold; color: ${warnaPerforma(kecepatanKerja)};">
+                ${kecepatanKerja.toFixed(1)}%
+              </div>
+              <div style="font-size: 12px; font-weight: bold; color: ${warnaPerforma(kecepatanKerja)};">
+                ${kategoriPerforma(kecepatanKerja)}
+              </div>
+              <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                Rata-rata ${rataRataBenar.toFixed(1)}/50 soal per sesi
+              </div>
+            </div>
+            
+            <div style="text-align: center; padding: 10px; border: 1px solid #000;">
+              <h4 style="margin: 5px 0; font-size: 14px;">KETELITIAN KERJA</h4>
+              <div style="font-size: 24px; font-weight: bold; color: ${warnaPerforma(ketelitianKerja)};">
+                ${ketelitianKerja.toFixed(1)}%
+              </div>
+              <div style="font-size: 12px; font-weight: bold; color: ${warnaPerforma(ketelitianKerja)};">
+                ${kategoriPerforma(ketelitianKerja)}
+              </div>
+              <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                Akurasi total ${totalBenar}/${totalSesi * 50} soal
+              </div>
+            </div>
+            
+            <div style="text-align: center; padding: 10px; border: 1px solid #000;">
+              <h4 style="margin: 5px 0; font-size: 14px;">KEAJEGAN KERJA</h4>
+              <div style="font-size: 24px; font-weight: bold; color: ${warnaPerforma(keajeganKerja)};">
+                ${keajeganKerja.toFixed(1)}%
+              </div>
+              <div style="font-size: 12px; font-weight: bold; color: ${warnaPerforma(keajeganKerja)};">
+                ${kategoriPerforma(keajeganKerja)}
+              </div>
+              <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                Standar deviasi ${standarDeviasi.toFixed(2)}
+              </div>
+            </div>
+            
+            <div style="text-align: center; padding: 10px; border: 1px solid #000;">
+              <h4 style="margin: 5px 0; font-size: 14px;">KETAHANAN KERJA</h4>
+              <div style="font-size: 24px; font-weight: bold; color: ${warnaPerforma(ketahananKerja)};">
+                ${ketahananKerja.toFixed(1)}%
+              </div>
+              <div style="font-size: 12px; font-weight: bold; color: ${warnaPerforma(ketahananKerja)};">
+                ${kategoriPerforma(ketahananKerja)}
+              </div>
+              <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                Sesi akhir ${skorAkhir} vs awal ${skorAwal}
+              </div>
+            </div>
+            
+          </div>
+          
+          <div style="margin-top: 15px; padding: 10px; background: #f5f5f5; border: 1px solid #ccc;">
+            <h4 style="margin: 5px 0; font-size: 12px;">KETERANGAN KATEGORI:</h4>
+            <div style="font-size: 11px; line-height: 1.4;">
+              <div><strong>Sangat Tinggi (85-100%):</strong> Performa luar biasa, melebihi standar</div>
+              <div><strong>Tinggi (70-84%):</strong> Performa baik, di atas rata-rata</div>
+              <div><strong>Sedang (55-69%):</strong> Performa cukup, perlu sedikit improvement</div>
+              <div><strong>Rendah (<55%):</strong> Performa perlu improvement signifikan</div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      return assessmentHTML;
+    }
+    
+    function initializeChart() {
+      const ctx = document.getElementById('performanceChart');
+      if (!ctx) return;
+      
+      // Prepare data for Chart.js
+      const labels = semuaHasil.map(h => `Sesi ${h.sesi}`);
+      const scores = semuaHasil.map(h => h.skor);
+      const totalQuestions = semuaHasil.map(h => h.totalSoal);
+      const incorrectAnswers = semuaHasil.map(h => h.totalSoal - h.skor);
+      
+      // Determine colors based on scores
+      const pointColors = scores.map(score => {
+        if (score >= 40) return '#4CAF50';
+        if (score >= 30) return '#FF9800';
+        return '#F44336';
+      });
+      
+      // Determine line color based on last score
+      const lastScore = scores[scores.length - 1] || 0;
+      const lineColor = lastScore >= 40 ? '#4CAF50' : lastScore >= 30 ? '#FF9800' : '#F44336';
+      
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Jawaban Benar',
+            data: scores,
+            borderColor: lineColor,
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            borderWidth: 3,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: pointColors,
+            pointBorderColor: '#000',
+            pointBorderWidth: 1,
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                title: function(context) {
+                  return context[0].label;
+                },
+                label: function(context) {
+                  const index = context.dataIndex;
+                  const benar = scores[index];
+                  const salah = incorrectAnswers[index];
+                  const total = totalQuestions[index];
+                  const persentase = ((benar / 50) * 100).toFixed(1);
+                  
+                  return [
+                    `Benar: ${benar} soal`,
+                    `Salah: ${salah} soal`,
+                    `Total: ${total} soal`,
+                    `Persentase: ${persentase}%`
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 50,
+              ticks: {
+                stepSize: 10,
+                callback: function(value) {
+                  return value.toString();
+                }
+              },
+              title: {
+                display: true,
+                text: 'Jumlah Jawaban Benar'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Sesi'
+              }
+            }
+          }
+        }
+      });
     }
 
     function resetTes() {
