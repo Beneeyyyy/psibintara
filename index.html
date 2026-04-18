@@ -318,6 +318,7 @@
 
     <div style="text-align:center;">
       <button onclick="lanjutSesiBerikutnya()">LANJUT KE SESI BERIKUTNYA</button>
+      <button onclick="selesaiDini()">SELESAI</button>
       <button onclick="resetTes()">RESET TES</button>
     </div>
 
@@ -621,6 +622,28 @@
       }
     }
 
+    function selesaiDini() {
+      // Hentikan timer
+      clearInterval(timerInterval);
+      
+      // Simpan hasil sesi ini jika ada jawaban
+      if (hasilJawaban.length > 0) {
+        semuaHasil.push({
+          sesi: sesiSekarang,
+          kategori: ['HURUF HILANG', 'ANGKA HILANG', 'SIMBOL HILANG', 'SOAL TAHUN LALU'][jenis],
+          skor: skor,
+          totalSoal: hasilJawaban.length,
+          persentase: (hasilJawaban.length > 0 ? (skor/hasilJawaban.length*100).toFixed(1) : 0)
+        });
+        
+        skorTotal += skor;
+        document.getElementById('totalSkor').textContent = skorTotal;
+      }
+      
+      // Langsung tampilkan hasil akhir
+      tampilkanHasilAkhir();
+    }
+
     function selesaiSesi() {
       // Simpan hasil sesi ini
       semuaHasil.push({
@@ -688,15 +711,19 @@
     function tampilkanHasilAkhir() {
       const container = document.querySelector('.container');
       const totalSoalSemuaSesi = totalSesi * 50; // 10 sesi × 50 soal
-      const persentase = (skorTotal/totalSoalSemuaSesi*100).toFixed(1);
+      const totalSoalDikerjakan = semuaHasil.reduce((sum, h) => sum + h.totalSoal, 0);
+      const persentase = totalSoalDikerjakan > 0 ? (skorTotal/totalSoalDikerjakan*100).toFixed(1) : 0;
+      const selesaiDini = semuaHasil.length < totalSesi;
       
       let hasilHTML = `
-        <h1>TEST KECERMATAN BINTARA - HASIL AKHIR</h1>
+        <h1>TEST KECERMATAN BINTARA - HASIL ${selesaiDini ? 'SEMENTARA' : 'AKHIR'}</h1>
         <div class="score">
-          <h2>Total Skor: ${skorTotal} / ${totalSoalSemuaSesi} (${persentase}%)</h2>
+          <h2>Total Skor: ${skorTotal} / ${selesaiDini ? totalSoalDikerjakan : totalSoalSemuaSesi} (${persentase}%)</h2>
           <h4>Selesai: ${semuaHasil.length} dari ${totalSesi} sesi</h4>
+          ${selesaiDini ? '<h4 style="color: #FF9800;">Tes selesai lebih awal</h4>' : ''}
         </div>
         <div style="margin: 20px 0; text-align: center;">
+          ${selesaiDini ? '<button onclick="lanjutkanTes()">LANJUTKAN TES</button>' : ''}
           <button onclick="location.reload()">ULANGI TES</button>
         </div>
         
@@ -956,6 +983,19 @@
           }
         }
       });
+    }
+
+    function lanjutkanTes() {
+      // Kembali ke tampilan tes normal
+      document.querySelector('.container').style.display = 'block';
+      document.getElementById('startScreen').style.display = 'none';
+      
+      // Lanjutkan sesi berikutnya
+      if (semuaHasil.length > 0) {
+        sesiSekarang = semuaHasil.length + 1;
+      }
+      
+      resetSesi();
     }
 
     function resetTes() {
